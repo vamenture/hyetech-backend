@@ -7,6 +7,16 @@ export const findUserById = async (_id) => {
   return await UserModel.findById(_id);
 };
 
+
+
+export const updateOtpAndExpirationTime = async (_id,OTP,expirationTime) => {
+ return await UserModel.findByIdAndUpdate(_id,
+    { otp: OTP, expiration_time: expirationTime },
+     { new: true }).select('-password');
+};
+
+
+
 export const createUser = async (data, hashedPassword) => {
   return await UserModel.create({
     ...data,
@@ -51,3 +61,8 @@ export const updateToken = async (_id, refreshToken) => {
     { new: true }
   );
 };
+
+
+export const logoutUser = async (_id) => {
+  return await UserModel.findByIdAndUpdate(_id,{ token: null, otp: null,  }, { new: true }).select( "-password" )
+}
