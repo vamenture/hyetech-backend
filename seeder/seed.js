@@ -5,6 +5,7 @@ import { initialUser, generatePassword } from "./user.js";
 import UserModel from "../src/models/user.model.js";
 import { httpStatusCodes } from "../src/utils/http-status-codes.js";
 import { serverResponseMessage } from "../src/config/message.js";
+import { seedCountry } from "./seedCountry.js";
 
 // Load environment variables
 dotenv.config();
@@ -21,6 +22,9 @@ async function connectToDatabase() {
 }
 
 async function seedSuperAdmin() {
+
+  await seedCountry();
+
   try {
     const generatedPassword = generatePassword(15);
 
@@ -36,7 +40,7 @@ async function seedSuperAdmin() {
     if (!hashedPassword) {
       throw {
         code: httpStatusCodes.INTERNAL_SERVER_ERROR,
-        message: serverResponseMessage.PASSWORD_HASHED,
+        message: serverResponseMessage.ERROR,
       };
     }
 
@@ -46,7 +50,7 @@ async function seedSuperAdmin() {
     if (!user) {
       throw {
         code: httpStatusCodes.INTERNAL_SERVER_ERROR,
-        message: serverResponseMessage.MODULE_CREATED,
+        message: serverResponseMessage.ERROR,
       };
     }
 
