@@ -33,6 +33,10 @@ export const hashedPassword = async (password) => {
   return await bcrypt.hash( password, 10);
 }
 
+export const checkPassword = async (password,dbPassword) => {
+  return await bcrypt.compare( password, dbPassword);
+}
+
 
 export const generateOtpandexpirationTime = () =>{
     const otp = Math.floor(100000 + Math.random() * 900000).toString();

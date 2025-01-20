@@ -1,4 +1,4 @@
-import { sendEmail,generateOtpandexpirationTime,hashedPassword } from "../../config/common.js";
+import { sendEmail,generateOtpandexpirationTime,hashedPassword, checkPassword } from "../../config/common.js";
 import { httpResponseStatus } from "../../utils/httpResponseType.js";
 import { httpStatusCodes } from "../../utils/http-status-codes.js";
 import { serverResponseMessage } from "../../config/message.js";
@@ -6,7 +6,7 @@ import { httpResponses } from "../../utils/http-responses.js";
 import UserModel from "../../models/user.model.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import { createUser, findUserByEmail,updateToken,findUserById, updatePassword,updateOtpAndToken, updateOtpAndTokenAndPassword } from "../../db/front-repository/config/auth-repository.js";
+import { createUser, findUserByEmail,updateToken,findUserById, updatePassword,updateOtpAndToken, updateOtpAndTokenAndPassword, updateOtpAndExpirationTime, logoutUser } from "../../db/front-repository/config/auth-repository.js";
 
 const generateAccessToken = (_id, email) => {
   return jwt.sign(
@@ -89,12 +89,20 @@ export const SignUpCtrl = async (req, res) => {
   const {otp, expirationTime} = generateOtpandexpirationTime();
 
   //send email otp for email verification
-  await sendEmail(email, `Email VERIFICATION`, `<p>Dear InfoNGO user\nyour InfoNGO Account One Time PIN is: <b>${otp}</b>, and This OTP is valid for 10 minutes. \n\nThis is an auto-generated email. Do not reply to this email.<p>`);
+  // await sendEmail(email, `Email VERIFICATION`, `<p>Dear HyeTech user\nyour HyeTech Account One Time PIN is: <b>${otp}</b>, and This OTP is valid for 10 minutes. \n\nThis is an auto-generated email. Do not reply to this email.<p>`);
 
   //update otp in database
-  const updatedUser = await UserModel.findByIdAndUpdate(userDetails._id,{ otp: otp, expiration_time: expirationTime }, { new: true }).select('-password');
+  const updatedUser = await updateOtpAndExpirationTime(userDetails._id,otp,expirationTime);
+  if(!updatedUser){
+    throw {
+      code: httpStatusCodes.ERROR,
+      message: serverResponseMessage.ERROR,
+    };
+  }
+  
+  
 
-  //send response
+  //send success response
   return res.status(httpStatusCodes.SUCCESS).json({
     statusCode: httpStatusCodes.SUCCESS,
     status: httpResponses.SUCCESS,
@@ -108,6 +116,8 @@ export const SignUpCtrl = async (req, res) => {
 //  Login Api
 export const LoginCtrl = async ( req, res ) => {
   const { email, password } = req.body;
+
+  //check user exist or not
   const userDetails = await findUserByEmail(email);
   if( !userDetails ) {
     throw {
@@ -117,13 +127,16 @@ export const LoginCtrl = async ( req, res ) => {
   };
 
 
-  const isPasswordCorrect = await bcrypt.compare( password, userDetails.password );
+  //check password is correct or not
+  const isPasswordCorrect = await checkPassword(password,userDetails.password);
   if( !isPasswordCorrect ) {
     throw {
       code: httpStatusCodes.BAD_REQUEST,
-      message: serverResponseMessage.INCORRECT_PASSWORD,
+      message: serverResponseMessage.INCORRECT_CREDENTIAL,
     };
   };
+
+  //generate token
   const {accessToken,refreshToken} = await generateAccessAndRefreshTokens(userDetails._id);
 
 
@@ -151,24 +164,39 @@ export const LoginCtrl = async ( req, res ) => {
 // Change Password Api
 export const ChangePasswordCtrl = async ( req, res ) => {
   const user = req.user;
+
+  //check user exist or not
   const isUserExist = await findUserById(user._id);
   if( !isUserExist ) {
     throw {
       code: httpStatusCodes.BAD_REQUEST,
-      message: serverResponseMessage.DOES_NOT_EXIST,
+      message: serverResponseMessage.NOT_EXIST,
     };
   };
+
+
   const { oldPassword, newPassword } = req.body;
-  const isPasswordMatch = await bcrypt.compare( oldPassword, isUserExist.password );
+
+  //compare old password with db password
+  const isPasswordMatch = await checkPassword( oldPassword, isUserExist.password );
   if( !isPasswordMatch ) {
   throw {
       code: httpStatusCodes.BAD_REQUEST,
-      message: serverResponseMessage.INCORRECT_PASSWORD,
+      message: serverResponseMessage.INVALID_CREDENTIALS,
     };
   };
-  const hashedPassword = await bcrypt.hash( newPassword, 10 );
 
-  const updatedUser = await updatePassword(isUserExist._id,hashedPassword)
+  //hash new password
+  const hashPassword = await hashedPassword( newPassword, 10 );
+
+  //update hashed password
+  const updatedUser = await updatePassword(isUserExist._id,hashPassword)
+  if(!updatedUser){
+    throw {
+      code: httpStatusCodes.ERROR,
+      message: serverResponseMessage.ERROR,
+    };
+  }
 
   return res.status(httpStatusCodes.SUCCESS).json({
     statusCode: httpStatusCodes.SUCCESS,
@@ -278,15 +306,24 @@ export const verifyOtpCtrl = async ( req, res ) => {
 //  Logout Api
 export const LogoutCtrl = async ( req, res ) => {
   const user = req.user;
-  const isUserExist = await UserModel.findById( user._id );
+
+  //check user exist or not
+  const isUserExist = await findUserById( user._id );
   if( !isUserExist ) {
     throw{
       code: httpStatusCodes.UNPROCESSABLE_ENTITY,
-      message: serverResponseMessage.DOES_NOT_EXIST,
+      message: serverResponseMessage.NOT_EXIST,
     };
   };
   
-  const updateUser = await UserModel.findByIdAndUpdate( user._id,{ token: null, otp: null,  }, { new: true }).select( "-password" )
+  //set token == null in db
+  const updateUser = await logoutUser(isUserExist._id);
+  if(!updateUser){
+    throw{
+      code: httpStatusCodes.ERROR,
+      message: serverResponseMessage.ERROR,
+    };
+  }
   const options = {
     httpOnly: true,
     secure: true
